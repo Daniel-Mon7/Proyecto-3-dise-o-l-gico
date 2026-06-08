@@ -36,47 +36,26 @@ A continuación se presenta el diagrama de bloques que detalla la interconexión
 
 ```mermaid
 graph TD
-    %% Entradas globales
-    CLK((clk)) --> u_input_div
-    CLK --> u_divisor
-    CLK --> u_selector_div
+    %% Entradas Físicas
+    INPUT_KEY["key_in [3:0]"]
+    INPUT_VAL["valid"]
     
-    RST((rst)) --> u_input_div
-    RST --> u_divisor
-    RST --> u_selector_div
-
-    KEY_IN[key_in [3:0]] --> u_input_div
-    VALID[valid] --> u_input_div
-    VALID --> u_selector_div
-
-    %% Conexiones de input_div
-    subgraph Subsistema_Entrada [input_div]
-        u_input_div
-    end
-    u_input_div --> |dividendo [5:0]| u_divisor
-    u_input_div --> |divisor [3:0]| u_divisor
-    u_input_div --> |start_calc| u_divisor
-    u_input_div --> |num_registro [15:0]| u_selector_div
-    u_input_div --> |decenas [3:0]| u_selector_div
-    u_input_div --> |unidades [3:0]| u_selector_div
-
-    %% Conexiones de divisor
-    subgraph Subsistema_Aritmetico [divisor]
-        u_divisor
-    end
-    u_divisor --> |cociente [5:0]| Logic_BCD[Lógica Combinacional BCD]
-    u_divisor --> |residuo [3:0]| Logic_BCD
-    u_divisor --> |done| u_selector_div
-
-    %% Conexiones Lógica BCD interna de div_top
-    u_input_div --> |divisor [3:0]| Logic_BCD
-    Logic_BCD --> |cociente_bcd [7:0]| u_selector_div
-    Logic_BCD --> |residuo_bcd [7:0]| u_selector_div
-    Logic_BCD --> |divisor_bcd [7:0]| u_selector_div
-
-    %% Conexiones de selector_div
-    subgraph Subsistema_Visualizacion [selector_div]
-        u_selector_div
+    %% Módulo Superior (div_top)
+    subgraph div_top [Módulo Jerárquico: div_top]
+        u_input_div["input_div (Captura y Registro)"]
+        u_divisor["divisor (FSMD Shift-and-Subtract)"]
+        u_selector_div["selector_div (Mux de Vistas)"]
+        
+        %% Interconexiones internas
+        u_input_div --> |"dividendo [5:0]<br>divisor [3:0]<br>start_calc"| u_divisor
+        u_input_div --> |"num_registro [15:0]"| u_selector_div
+        u_divisor   --> |"cociente [5:0]<br>residuo [3:0]<br>done"| u_selector_div
     end
     
-    u_selector_div --> |num_out [15:0]| NUM_OUT[Salida del Sistema: num_out]
+    %% Flujo de Entradas al Sistema
+    INPUT_KEY --> u_input_div
+    INPUT_VAL --> u_input_div
+    INPUT_VAL --> u_selector_div
+    
+    %% Salida Final
+    u_selector_div --> OUTPUT_NUM["num_out [15:0]"] 
