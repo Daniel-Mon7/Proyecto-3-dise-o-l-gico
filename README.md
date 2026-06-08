@@ -30,32 +30,91 @@ El flujo de control y datos del circuito sigue el siguiente orden cronológico:
 
 ---
 
-## 2. Arquitectura de Subsistemas (Diagrama de Bloques General)
+## 3. Diagramas de Bloques del Sistema
 
-A continuación se presenta el diagrama de bloques que detalla la interconexión estructural y el flujo de buses entre los diferentes componentes del sistema.
+A continuación se presentan los diagramas de bloques del sistema modular de división secuencial, divididos en su vista externa (caja negra) y su estructura interna detallada.
+
+### 3.1 Diagrama de Bloques Externo (Entradas y Salidas de `div_top`)
+Este diagrama representa la interfaz externa del módulo raíz. Muestra estrictamente los estímulos que recibe el sistema desde el hardware de la FPGA y la salida final que se envía hacia el decodificador físico de los displays.
 
 ```mermaid
+graph LR
+    %% Configuración de Estilos
+    classDef hardware fill:#ececff,stroke:#9370db,stroke-width:2px;
+    classDef topBlock fill:#ffe4e1,stroke:#cd5c5c,stroke-width:3px,font-weight:bold;
+
+    %% Nodos de Entrada (Externos)
+    CLK["clk<br>(Reloj Maestro 27MHz)"]:::hardware
+    RST["rst<br>(Reset Asíncrono)"]:::hardware
+    KEY["key_in [3:0]<br>(Bus del Teclado)"]:::hardware
+    VAL["valid<br>(Strobe de Tecla)"]:::hardware
+
+    %% Nodo Principal
+    DIV_TOP["Módulo Raíz:<br>div_top"]:::topBlock
+
+    %% Nodo de Salida (Externo)
+    OUT_NUM["num_out [15:0]<br>(Bus de Visualización BCD)"]:::hardware
+
+    %% Conexiones
+    CLK --> DIV_TOP
+    RST --> DIV_TOP
+    KEY --> DIV_TOP
+    VAL --> DIV_TOP
+    DIV_TOP --> OUT_NUM
+
+### 3.2 Diagrama de Bloques Interno (Arquitectura y Ruteo de Datos)
+Este diagrama detalla la organización interna de div_top. Muestra cómo se interconectan los submódulos (input_div, divisor y selector_div), la distribución de los buses de datos y la lógica de conversión combinacional binaria a BCD implementada en el bloque superior.
 graph TD
-    %% Entradas Físicas
-    INPUT_KEY["key_in [3:0]"]
-    INPUT_VAL["valid"]
-    
-    %% Módulo Superior (div_top)
-    subgraph div_top [Módulo Jerárquico: div_top]
-        u_input_div["input_div (Captura y Registro)"]
-        u_divisor["divisor (FSMD Shift-and-Subtract)"]
-        u_selector_div["selector_div (Mux de Vistas)"]
+    %% Configuración de Estilos
+    classDef external fill:#ececff,stroke:#9370db,stroke-width:2px;
+    classDef subModule fill:#fffacd,stroke:#daa520,stroke-width:2px;
+    classDef logicBlock fill:#e0ffff,stroke:#20b2aa,stroke-width:2px,stroke-dasharray: 5 5;
+
+    %% Entradas Externas (Fuera del Subgraph)
+    EXT_CLK["clk (Reloj)"]:::external
+    EXT_RST["rst (Reset)"]:::external
+    EXT_KEY["key_in [3:0]"]:::external
+    EXT_VAL["valid"]:::external
+
+    %% Caja del Módulo Superior
+    subgraph div_top ["Estructura Interna de div_top"]
+        %% Submódulos
+        U_INPUT["input_div<br>(Captura y Registro)"]:::subModule
+        U_DIVISOR["divisor<br>(Procesador Aritmético FSMD)"]:::subModule
+        U_SELECTOR["selector_div<br>(Multiplexor de Vistas)"]:::subModule
         
-        %% Interconexiones internas
-        u_input_div --> |"dividendo [5:0]<br>divisor [3:0]<br>start_calc"| u_divisor
-        u_input_div --> |"num_registro [15:0]"| u_selector_div
-        u_divisor   --> |"cociente [5:0]<br>residuo [3:0]<br>done"| u_selector_div
+        %% Bloques Lógicos Combinacionales
+        LOGIC_BCD["Lógica Combinacional BCD<br>(Conversión en Bloque Superior)"]:::logicBlock
+
+        %% Conexiones Internas
+        U_INPUT --> |"dividendo [5:0]<br>divisor [3:0]"| U_DIVISOR
+        U_INPUT --> |"start_calc"| U_DIVISOR
+        U_INPUT --> |"num_registro [15:0]"| U_SELECTOR
+        U_INPUT --> |"decenas [3:0]<br>unidades [3:0]"| U_SELECTOR
+
+        U_DIVISOR --> |"cociente [5:0]<br>residuo [3:0]"| LOGIC_BCD
+        U_DIVISOR --> |"done"| U_SELECTOR
+
+        LOGIC_BCD --> |"cociente_bcd [7:0]<br>residuo_bcd [7:0]<br>divisor_bcd [7:0]"| U_SELECTOR
     end
+
+    %% Salida Externa (Fuera del Subgraph)
+    EXT_OUT["num_out [15:0]"]:::external
+
+    %% Enrutamiento desde Entradas Externas a Submódulos
+    EXT_CLK ----> U_INPUT
+    EXT_CLK ----> U_DIVISOR
+    EXT_CLK ----> U_SELECTOR
     
-    %% Flujo de Entradas al Sistema
-    INPUT_KEY --> u_input_div
-    INPUT_VAL --> u_input_div
-    INPUT_VAL --> u_selector_div
+    EXT_RST ----> U_INPUT
+    EXT_RST ----> U_DIVISOR
+    EXT_RST ----> U_SELECTOR
+
+    EXT_KEY --> U_INPUT
+    EXT_KEY --> U_SELECTOR
     
-    %% Salida Final
-    u_selector_div --> OUTPUT_NUM["num_out [15:0]"] 
+    EXT_VAL --> U_INPUT
+    EXT_VAL --> U_SELECTOR
+
+    %% Enrutamiento hacia Salida Externa
+    U_SELECTOR --> EXT_OUT
