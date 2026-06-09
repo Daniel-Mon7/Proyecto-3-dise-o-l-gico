@@ -9,7 +9,7 @@ Este proyecto consiste en el diseño e implementación de un sistema digital sin
 
 ---
 
-## 1. Abreviaturas
+## Abreviaturas
 - **FPGA**: Field Programmable Gate Arrays
 - **rst**: Reset (Reinicio Asíncrono)
 - **clk**: Clock (Reloj de Sistema)
@@ -20,7 +20,7 @@ Este proyecto consiste en el diseño e implementación de un sistema digital sin
 
 ---
 
-## 2. Descripción General del Funcionamiento del Circuito Completo
+## 1. Descripción General del Funcionamiento del Circuito Completo
 
 El circuito integrado completo funciona como una calculadora de división entera secuencial operada por teclado. La arquitectura está gobernada por el módulo de jerarquía superior (`div_top`), el cual interconecta los bloques de captura, procesamiento aritmético, conversión de formato y multiplexación de visualización.
 
@@ -33,11 +33,11 @@ El flujo de control y datos del circuito sigue el siguiente orden cronológico:
 
 ---
 
-## 3. Descripciones Técnicas y Código de los Módulos
+## 2. Descripciones Técnicas y Código de los Módulos
 
 A continuación se detallan las especificaciones de diseño, funcionamiento de control y el código fuente en SystemVerilog de cada uno de los bloques estructurales que conforman el sistema.
 
-### 3.1 Módulo clk_divider
+### 2.1 Módulo clk_divider
 * **Descripción:** Divisor de frecuencia por conteo binario. Reduce la señal del reloj maestro de la FPGA (27 MHz) para generar una señal de habilitación periódica (`tick`) de baja frecuencia necesaria para la multiplexación temporal de los displays de 7 segmentos sin sobrecargar la conmutación de los transistores.
 ```systemverilog
 module clk_divider (
@@ -58,7 +58,7 @@ module clk_divider (
 endmodule
 ```
 
-### 3.2 Módulo anode_control
+### 2.2 Módulo anode_control
 * **Descripción:**Controlador secuencial de ánodos/cátodos para la multiplexación de displays. Conmutador cíclico basado en un contador de dos bits que activa secuencialmente uno de los cuatro dígitos físicos disponibles de manera síncrona con el pulso generado por el divisor de reloj.
 ```systemverilog
 module anode_control (
@@ -87,7 +87,7 @@ endmodule
 ```
 
 
-### 3.3 Módulo hex_to_7seg
+### 2.3 Módulo hex_to_7seg
 * **Descripción:**Decodificador combinacional puro. Transforma una palabra de 4 bits en código hexadecimal a su representation equivalente en un display de 7 segmentos empleando lógica directa para configuraciones de cátodo común (un '1' lógico enciende el segmento).
 ```systemverilog
 module hex_to_7seg (
@@ -119,7 +119,7 @@ endmodule
 ```
 
 
-### 3.4 Módulo display
+### 2.4 Módulo display
 * **Descripción:**Envoltorio estructural de visualización completa. Integra el divisor de frecuencia, el asignador secuencial de posiciones y el convertidor combinacional a 7 segmentos para multiplexar dinámicamente un bus de entrada de 16 bits en un arreglo físico de pantallas.
 ```systemverilog
 module display (
@@ -165,7 +165,7 @@ endmodule
 ```
 
 
-### 3.5 Módulo key_scanner
+### 2.5 Módulo key_scanner
 * **Descripción:**Escaneador matricial secuencial. Modifica cíclicamente el estado de excitación de las filas del teclado físico mediante un registro de desplazamiento de un solo bit activo alto, deteniendo su barrido de forma inteligente cuando se registra una pulsación de tecla activa.
 ```systemverilog
 module key_scanner #(
@@ -213,7 +213,7 @@ endmodule
 
 
 
-### 3.6 Módulo key_decoder
+### 2.6 Módulo key_decoder
 * **Descripción:**Decodificador combinacional de matriz a hexadecimal. Mapea la intersección binaria entre la fila de excitación activa actual y la columna de lectura devuelta por el periférico físico, convirtiéndola en una palabra de 4 bits representativa del valor de la tecla pulsada.
 ```systemverilog
 module key_decoder (
@@ -278,7 +278,7 @@ endmodule
 
 
 
-### 3.7 Módulo key_debouncer
+### 2.7 Módulo key_debouncer
 * **Descripción:**Filtro síncrono antirebotes basado en máquina de estados (FSM). Implementa una ventana de histéresis temporal mediante contadores internos para limpiar las señales espurias transitorias del contacto mecánico del botón antes de disparar un pulso de validez único de un ciclo de reloj.
 ```systemverilog
 module key_debouncer #(
@@ -346,7 +346,7 @@ endmodule
 ```
 
 
-### 3.8 Módulo teclado_completo
+### 2.8 Módulo teclado_completo
 * **Descripción:**Integrador estructural del subsistema de entrada. Acopla el barrido secuencial de líneas físicas, la traducción lógica de cruce y el filtrado por histéresis para proveer una interfaz limpia de adquisición de caracteres hexadecimales.
 ```systemverilog
 module teclado_completo (
@@ -391,7 +391,7 @@ endmodule
 
 
 
-### 3.9 Módulo input_div
+### 2.9 Módulo input_div
 * **Descripción:**FSM de procesamiento y empaquetamiento de entrada. Administra las fases de captura interactiva de operandos decimales ingresados por teclas secuenciales, calcula el producto por ponderación (decenas * 10) y aplica la cota de protección restrictiva (máximo 15) en el bus del divisor.
 ```systemverilog
 module input_div (
@@ -499,7 +499,7 @@ module input_div (
 endmodule
 ```
 
-### 3.10 Módulo divisor
+### 2.10 Módulo divisor
 * **Descripción:**Coprocesador aritmético basado en FSMD. Implementa el algoritmo iterativo de división por resta y desplazamiento izquierdo binario (Shift-and-Subtract). Evalúa el bit de signo del residuo intermedio parcial para decidir la restauración del acumulador y consolidar el bit correspondiente del cociente final en un lazo sincronizado de alta frecuencia.
 ```systemverilog
 module divisor (
@@ -595,7 +595,7 @@ module divisor (
     end
 endmodule
 ```
-### 3.11 Módulo selector_div
+### 2.11 Módulo selector_div
 * **Descripción:**Enrutador dinámico de datos y multiplexor de vistas de salida. Funciona como una máquina de estados secundaria que vigila las directivas del teclado del usuario posterior al pulso done. Conmuta el bus de datos hacia los displays de 7 segmentos entre dividendo, divisor, cociente o residuo según la tecla de comando presionada de forma persistente.
 ```systemverilog
 module selector_div (
@@ -662,7 +662,7 @@ module selector_div (
 endmodule
 ```
 
-### 3.12 Módulo div_top
+### 2.12 Módulo div_top
 * **Descripción:**Unidad estructural raíz e interconexión global. Instancia los submódulos funcionales del sistema e implementa bloques combinacionales paralelos optimizados always_comb para convertir directamente los resultados aritméticos binarios crudos a formato BCD segmentado antes de transferirlos a las pantallas.
 ```systemverilog
 module div_top (
@@ -742,7 +742,7 @@ module div_top (
     );
 endmodule
 ```
-### 3.13 Módulo top
+### 2.13 Módulo top
 * **Descripción:** Unidad raíz fundamental de todo el sistema integrado. Se encarga de la interconexión directa con los pines físicos de la FPGA Tang Nano 9K. Este módulo realiza tres tareas críticas: invierte la señal del botón físico de reinicio (`assign rst = ~reset`) para adecuarla a la lógica activa en alto del circuito, instancia el bloque de captura periférica (`teclado_completo`), inyecta los flujos de datos filtrados hacia el núcleo de procesamiento matemático secuencial (`div_top`), y finalmente enruta el bus de salida resultante de 16 bits hacia el controlador multiplexado de visualización física (`display`) para manejar dinámicamente los ánodos y segmentos.
 
 ```systemverilog
@@ -789,9 +789,9 @@ module top (
 
 endmodule
 ```
-## 4. Diagramas de Bloques del Sistema
+## 3. Diagramas de Bloques del Sistema
 
-### 4.1 Diagrama de Bloques Externo (Entradas y Salidas de la FPGA hacia `top`)
+### 3.1 Diagrama de Bloques Externo (Entradas y Salidas de la FPGA hacia `top`)
 Este diagrama representa la interfaz física con el entorno exterior, mostrando estrictamente los periféricos conectados a la Tang Nano 9K y los buses del módulo raíz absoluto.
 
 ```mermaid
@@ -824,7 +824,7 @@ graph LR
     TOP --> SEG
 ```
 
-### 4.2 Diagrama de Bloques Interno (Ruteo General del Sistema Integrado)
+### 3.2 Diagrama de Bloques Interno (Ruteo General del Sistema Integrado)
 ```mermaid
 graph TD
     %% Configuración de Estilos
