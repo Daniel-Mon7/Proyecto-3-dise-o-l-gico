@@ -872,7 +872,349 @@ graph TD
     EXT_SEG["seg [6:0] (Segmentos)"]:::external
 
     %% Conexiones desde el interior hacia pines externos
+
     MOD_TECLADO --> EXT_ROWS
     MOD_DISPLAY --> EXT_AN
     MOD_DISPLAY --> EXT_SEG
-    ```
+```
+### 4 Ejemplo y análisis de una simulación funcional del sistema completo
+
+Para esta prueba se utilizó como ejemplo la división:
+
+```text
+25 / 4
+```
+
+El resultado que se espera de esta división es:
+
+```text
+Cociente = 6
+Residuo  = 1
+```
+
+La simulación permite revisar que cada bloque del sistema trabaje en el orden correcto: primero se leen las teclas, luego se forman el dividendo y el divisor, después se ejecuta la división y finalmente se envía el número seleccionado al módulo de display.
+
+---
+
+#### 4.1 Flujo general del sistema
+
+El sistema completo se conecta desde el módulo `top`, donde se unen los tres bloques principales: el teclado, el bloque de división y el display de 7 segmentos.
+
+En esta conexión, el teclado entrega dos señales importantes: `key_value`, que contiene el valor de la tecla presionada, y `key_valid`, que indica cuándo la tecla ya fue aceptada como válida.
+Después, el módulo `div_top` recibe esos datos, realiza la división y genera `num_value`, que es el número que se manda al display.
+
+---
+
+#### 4.2 Estímulo en la simulación
+
+Para ingresar la operación `25 / 4`, se simularon las siguientes teclas:
+
+```text
+2, 5, A, 4 y B
+```
+
+El significado de las teclas son:
+
+| Tecla | Función                                 |
+| ----- | --------------------------------------- |
+| `A`   | Confirmar dividendo                     |
+| `B`   | Confirmar divisor e iniciar la división |
+
+Durante esta parte de la simulación, el sistema primero debe formar el número `25`, luego esperar el divisor, guardar el `4` y finalmente activar la señal que inicia el cálculo.
+
+---
+
+#### 4.3 Lectura y validación de las teclas
+
+La lectura del teclado no se usa directamente, ya que una tecla puede generar rebotes o valores inestables al ser presionada. Por eso, el módulo `key_debouncer` espera a que la tecla se mantenga estable durante cierto tiempo antes de generar el pulso `valid`.
+
+```systemverilog
+DEBOUNCE: begin
+    if (fila_pres && raw_key == stable_key) begin
+        if (debounce_cnt >= DEBOUNCE_TIME) begin
+            key_out <= stable_key;
+            valid   <= 1'b1;
+            state   <= PRESSED;
+        end else begin
+            debounce_cnt <= debounce_cnt + 1'b1;
+        end
+    end else begin
+        state <= IDLE;
+    end
+end
+```
+
+**Análisis:**
+  En la simulación se observa que `valid` solo se activa por un ciclo de reloj cuando la tecla ya está estable. Esto es importante porque evita que el sistema lea varias veces la misma tecla. Por ejemplo, aunque se mantenga presionada la tecla `2`, el sistema solamente debe registrar un `2`. Esta parte es muy útil para evitar contactos no deseados.
+
+---
+
+#### 4.4 Registro del dividendo y divisor
+
+El módulo encargado de recibir los números es `input_div`. Este módulo tiene dos estados principales: uno para esperar el dividendo y otro para esperar el divisor.
+
+Cuando se presionan las teclas `2` y `5`, el sistema forma el dividendo. Primero guarda el `2` como decena, y luego cuando llega el `5`, calcula:
+
+```text
+dividendo = 2 × 10 + 5 = 25
+```
+
+Esto se ve en el siguiente fragmento:
+
+```systemverilog
+if (valid_pulse && key_in <= 4'h9) begin
+    if (!tengo_decenas_num) begin
+        decenas           <= key_in;
+        unidades          <= 4'h0; 
+        tengo_decenas_num <= 1;
+        dividendo         <= {2'b00, key_in};
+        num_registro      <= {12'b0, key_in}; 
+    end else begin
+        unidades          <= key_in;
+        tengo_decenas_num <= 0;
+        dividendo         <= (decenas * 10) + key_in;
+        num_registro      <= {8'b0, decenas, key_in}; 
+    end
+end
+```
+
+Luego, al presionar la tecla `A`, el sistema confirma el dividendo y pasa al estado donde espera el divisor.
+
+```systemverilog
+if (valid_pulse && key_in == 4'hA) begin
+    if (tengo_decenas_num) begin
+        dividendo         <= {2'b00, decenas};
+        num_registro      <= {12'b0, decenas};
+        tengo_decenas_num <= 0;
+    end
+    state <= ESPERA_DIVISOR;
+    tengo_decenas_div <= 0;
+end
+```
+
+Después se presiona la tecla `4`, por lo que el divisor queda guardado con el valor 4. Finalmente, al presionar `B`, se genera el pulso `start_calc`, que inicia la división.
+
+```systemverilog
+if (valid_pulse && key_in == 4'hB) begin
+    if (tengo_decenas_div) begin
+        divisor           <= dec_div;
+        tengo_decenas_div <= 0;
+    end
+    num_registro <= 16'h0000;
+    start_calc  <= 1;
+    state       <= ESPERA_DIVIDENDO;
+end
+```
+
+**Análisis:**
+  En esta etapa de la simulación se debe verificar que antes de presionar `B`, las señales internas tengan estos valores:
+
+```text
+dividendo = 25
+divisor   = 4
+```
+
+Cuando se presiona `B`, `start_calc` se activa por un ciclo. Esta señal es la que le indica al divisor que ya puede comenzar a trabajar.
+
+---
+
+#### 4.5 Cálculo de la división
+
+El módulo `divisor` realiza la división de forma secuencial. Esto quiere decir que no entrega el resultado inmediatamente, sino que va trabajando por varios ciclos de reloj.
+
+La máquina de estados del divisor está formada por los siguientes estados:
+
+```systemverilog
+typedef enum logic [2:0] {IDLE, INICIO, RESTA, DECIDE, SIGUIENTE, FIN} state_t;
+```
+
+Cuando `start` se activa, el divisor sale del estado `IDLE`, limpia los registros internos y comienza desde el bit más significativo del dividendo.
+
+```systemverilog
+IDLE: begin
+    if (start) begin
+        temp_cociente <= 0;
+        R             <= 0;
+        bit_index     <= 3'd5;
+        state         <= INICIO;
+    end
+end
+```
+
+Luego, el divisor desplaza el residuo parcial e ingresa el bit correspondiente del dividendo:
+
+```systemverilog
+INICIO: begin
+    R     <= {R[4:0], dividendo[bit_index]};
+    state <= RESTA;
+end
+```
+
+Después intenta restar el divisor al residuo parcial:
+
+```systemverilog
+RESTA: begin
+    resta <= R - {2'b00, divisor};
+    state <= DECIDE;
+end
+```
+
+En el estado `DECIDE`, el sistema revisa si la resta fue válida. Si la resta da negativa, el bit del cociente queda en `0`. Si la resta sí se puede hacer, el bit del cociente queda en `1` y el residuo parcial se actualiza.
+
+```systemverilog
+DECIDE: begin
+    if (resta[5])
+        temp_cociente[bit_index] <= 1'b0;
+    else begin
+        temp_cociente[bit_index] <= 1'b1;
+        R <= resta;
+    end
+    state <= SIGUIENTE;
+end
+```
+
+Cuando ya se revisaron todos los bits, el sistema llega al estado `FIN`, guarda el cociente y residuo finales, y activa `done`.
+
+```systemverilog
+FIN: begin
+    cociente_out <= temp_cociente;
+    residuo_out  <= R[3:0];
+    done         <= 1;
+    state        <= IDLE;
+end
+```
+
+**Análisis:**
+  Para el ejemplo `25 / 4`, al finalizar la operación se espera que las salidas sean:
+
+```text
+cociente = 6
+residuo  = 1
+done     = 1
+```
+
+Esto confirma que la operación fue correcta, ya que:
+
+```text
+25 = 4 × 6 + 1
+```
+
+---
+
+#### 4.6 Selección del dato que se muestra
+
+Cuando el divisor termina, la señal `done` activa el modo de resultado. Por defecto, el sistema muestra el cociente.
+
+```systemverilog
+if (done) begin
+    resultado_activo <= 1'b1;
+    modo_vista       <= VER_COCIENTE;
+end
+```
+
+Después de que el resultado está activo, se pueden usar las teclas `A`, `B`, `C` y `D` para seleccionar qué valor se desea ver en el display.
+
+**Análisis:**
+  En la simulación, después de que `done` se activa, el display muestra primero el cociente. Para este caso, el valor enviado al display es:
+
+```text
+num_out = 16'h0006
+```
+
+Luego se probó cambiar la visualización usando las teclas de selección:
+
+| Tecla | Valor mostrado | Significado |
+| ----- | -------------: | ----------- |
+| `A`   |           `25` | Dividendo   |
+| `B`   |            `4` | Divisor     |
+| `C`   |            `6` | Cociente    |
+| `D`   |            `1` | Residuo     |
+
+Esto permite comprobar que el sistema no solo calcula la división, sino que también puede mostrar cada parte importante de la operación.
+
+---
+
+#### Manejo de los displays de 7 segmentos
+
+El módulo `display` recibe el número final en la señal `num_in`. Este número es de 16 bits, por lo que se divide en cuatro grupos de 4 bits. Cada grupo representa un dígito del display.
+
+```systemverilog
+always_comb begin
+    case (sel)
+        2'd0: current_val = num_in[3:0];
+        2'd1: current_val = num_in[7:4];
+        2'd2: current_val = num_in[11:8];
+        2'd3: current_val = num_in[15:12];
+        default: current_val = 4'h0;
+    endcase
+end
+```
+
+Para el caso del cociente, el número que llega al display es:
+
+```text
+num_in = 16'h0006
+```
+
+Por lo tanto, los dígitos que se seleccionan son:
+
+```text
+Dígito 0 = 6
+Dígito 1 = 0
+Dígito 2 = 0
+Dígito 3 = 0
+```
+
+El módulo `anode_control` se encarga de activar un display a la vez. Esto se hace usando la señal `sel`, que cambia cada vez que llega un `tick`.
+
+```systemverilog
+always_ff @(posedge clk or posedge rst) begin
+
+    if (rst) begin
+        sel   <= 2'd0;
+        anode <= 4'b0000;
+
+    end else if (tick) begin
+
+        sel <= sel + 1'b1;
+
+        case (sel)
+            2'd0: anode <= 4'b1000;
+            2'd1: anode <= 4'b0001;
+            2'd2: anode <= 4'b0010;
+            2'd3: anode <= 4'b0100;
+        endcase
+    end
+end
+```
+
+Finalmente, el valor del dígito activo se convierte al patrón correspondiente de los 7 segmentos usando el módulo `hex_to_7seg`.
+
+```systemverilog
+4'h6: seg = 7'b0000010; // Muestra '6'
+```
+
+**Análisis:**
+  En la simulación se observa que los ánodos no se activan todos al mismo tiempo, sino uno por uno. Sin embargo, en la FPGA esto ocurre tan rápido que visualmente parece que todos los dígitos están encendidos a la vez.
+  Para el ejemplo del cociente `6`, cuando el selector apunta al dígito menos significativo, el valor enviado al decodificador es `4'h6` y la salida de segmentos toma el patrón `7'b0000010`.
+
+---
+
+#### 4.7 Resultado final de la simulación
+
+Para la operación:
+
+```text
+25 / 4
+```
+
+se obtuvo:
+
+```text
+Cociente = 6
+Residuo  = 1
+```
+
+Además, se verificó que el valor mostrado en los displays cambia correctamente dependiendo de la tecla de selección presionada. Por lo tanto, esta simulación confirma que el sistema completo funciona de manera ordenada, desde el estímulo de entrada hasta el manejo final de los 7 segmentos.
+
+
