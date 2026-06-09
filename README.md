@@ -1322,4 +1322,53 @@ El diseño utiliza una cantidad moderada de recursos de la FPGA. El uso de `SLIC
 Con estos resultados se puede concluir que el sistema completo cabe sin problema dentro de la Tang Nano 9K. También queda suficiente espacio disponible para futuras mejoras, como aumentar el tamaño de los números, agregar más validaciones o mejorar la interfazz.
 
 
+## 6 Reporte de velocidades máximas de reloj posibles en el diseño
+
+### 6.1 Descripción general
+
+Para verificar la velocidad máxima de reloj del diseño se revisó otra vez el reporte generado durante el proceso de `pnr`, específicamente el archivo:
+
+```text
+pnr_tangnano9k.log
+```
+
+Este reporte indica la frecuencia máxima estimada para el reloj principal del sistema y también muestra si el diseño cumple con la frecuencia objetivo definida para la FPGA.
+
+---
+
+### 6.2 Frecuencia objetivo del diseño y Frecuencia máxima reportada
+
+El proyecto establece que el sistema debe trabajar como mínimo con el reloj de la Tang Nano 9K, el cual es de:
+
+```text
+27 MHz
+```
+El reporte de temporización indicó el siguiente resultado:
+
+```text
+Max frequency for clock 'display_inst.clk': 95.26 MHz (PASS at 27.00 MHz)
+```
+---
+
+### 6.4 Análisis del resultado
+
+La frecuencia máxima obtenida fue de `95.26 MHz`, mientras que la frecuencia mínima requerida era de `27 MHz`.
+
+Por lo tanto:
+
+```text
+95.26 MHz > 27 MHz
+```
+
+Esto indica que el diseño cumple con el requisito de temporización del proyecto.
+
+Además, el reporte muestra la palabra `PASS`, lo cual confirma que la herramienta no encontró problemas para que el circuito trabaje con el reloj objetivo de 27 MHz.
+
+---
+
+### 6.5 Conclusión
+
+El diseño cumple correctamente con la frecuencia mínima solicitada. La frecuencia máxima reportada fue de aproximadamente `95.26 MHz`, por lo que existe un margen suficiente sobre los `27 MHz` requeridos.
+
+Esto significa que el sistema puede funcionar con el reloj principal de la Tang sin presentar problemas de temporización según el reporte de implementación.
 
