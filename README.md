@@ -1214,7 +1214,112 @@ se obtuvo:
 Cociente = 6
 Residuo  = 1
 ```
-
 Además, se verificó que el valor mostrado en los displays cambia correctamente dependiendo de la tecla de selección presionada. Por lo tanto, esta simulación confirma que el sistema completo funciona de manera ordenada, desde el estímulo de entrada hasta el manejo final de los 7 segmentos.
+
+## 5 Análisis de consumo de recursos en la FPGA y consumo de potencia
+
+### 5.1 Descripción general
+
+Para analizar el consumo de recursos del diseño se utilizaron los reportes generados durante el flujo de síntesis e implementación para la Tang .Los archivos revisados fueron principalmente:
+
+```text
+synthesis_tangnano9k.log
+pnr_tangnano9k.log
+```
+
+El reporte de síntesis muestra las celdas lógicas generadas a partir del código SystemVerilog, mientras que el reporte de `pnr` muestra cuántos recursos físicos de la FPGA se utilizaron después de implementar el diseño.
+
+---
+
+### 5.2 Recursos reportados en síntesis
+
+En la síntesis se obtuvo un total de:
+
+```text
+Number of cells: 1809
+```
+
+Los recursos principales reportados fueron:
+
+| Recurso     | Cantidad |
+| ----------- | -------: |
+| `DFFC`      |       37 |
+| `DFFCE`     |      133 |
+| `DFFE`      |        6 |
+| `DFFP`      |        2 |
+| `LUT1`      |      536 |
+| `LUT2`      |       68 |
+| `LUT3`      |      134 |
+| `LUT4`      |      195 |
+| `MUX2_LUT5` |      274 |
+| `MUX2_LUT6` |      123 |
+| `MUX2_LUT7` |       55 |
+| `MUX2_LUT8` |       21 |
+
+A partir de estos datos:
+
+```text
+Total de flip-flops = 37 + 133 + 6 + 2 = 178 FF
+```
+
+```text
+Total de LUT básicas = 536 + 68 + 134 + 195 = 933 LUT
+```
+
+**Análisis:**
+La cantidad de flip-flops se debe principalmente a los registros internos, contadores y máquinas de estado del sistema. Estos registros son necesarios para guardar las teclas ingresadas, el dividendo, el divisor, el cociente, el residuo y las señales de control.
+
+El uso de LUTs es esperado porque el diseño tiene bastante lógica combinacional, como el decodificador del teclado, la selección de datos, la conversión para el display y la lógica del divisor.
+
+---
+
+### 5.3 Recursos después de place and route
+
+Después de la implementación física, el reporte indicó la siguiente utilización de la FPGA:
+
+| Recurso     | Usado | Disponible | Uso |
+| ----------- | ----: | ---------: | --: |
+| `SLICE`     |  1253 |       8640 | 14% |
+| `IOB`       |    21 |        274 |  7% |
+| `MUX2_LUT5` |   274 |       4320 |  6% |
+| `MUX2_LUT6` |   123 |       2160 |  5% |
+| `MUX2_LUT7` |    55 |       1080 |  5% |
+| `MUX2_LUT8` |    21 |       1056 |  1% |
+
+**Análisis:**
+El recurso más utilizado fue `SLICE`, con un 14% del total disponible. Esto indica que el diseño no ocupa una cantidad alta de la FPGA y todavía queda bastante espacio libre para agregar mejoras.
+
+El uso de `IOB` fue de 21 pines, equivalente al 7%. Estos pines corresponden principalmente al teclado, los ánodos, los segmentos del display, el reloj y el reset (se puede revisar en el archivo de constraints).
+
+---
+
+### 5.4 Consumo de potencia
+
+En el flujo utilizado no se generó un archivo específico de potencia, como `power.rpt`. Por esta razón, no se cuenta con un valor numérico exacto de potencia estática, dinámica o total.
+
+Sin embargo, se puede hacer un análisis general. El consumo depende principalmente de las señales que cambian constantemente. En este diseño, los bloques que más pueden aportar al consumo son:
+
+| Bloque          | Motivo                                              |
+| --------------- | --------------------------------------------------- |
+| `clk_divider`   | Usa un contador que cambia con el reloj de 27 MHz   |
+| `key_scanner`   | Recorre el teclado para detectar teclas             |
+| `key_debouncer` | Usa un contador para validar teclas estables        |
+| `divisor`       | Realiza restas, desplazamientos y cambios de estado |
+| `display`       | Multiplexa los displays de 7 segmentos              |
+| `anode_control` | Activa los ánodos de forma secuencial               |
+
+**Análisis:**
+No todos los bloques trabajan con la misma actividad todo el tiempo. El divisor solo trabaja cuando se inicia una operación, mientras que el display y los contadores trabajan de forma continua para mantener el sistema activo.
+
+Por eso, el consumo constante viene principalmente del refrescamiento del display, el divisor de frecuencia y el escaneo del teclado. Aun así, como el uso de recursos es bajo, el diseño no representa una carga alta para la Tang.
+
+---
+
+### 5.5 Conclusión
+
+El diseño utiliza una cantidad moderada de recursos de la FPGA. El uso de `SLICE` fue de 14% y el uso de `IOB` fue de 7%. Además, se utilizaron 178 flip-flops y 933 LUT básicas.
+
+Con estos resultados se puede concluir que el sistema completo cabe sin problema dentro de la Tang Nano 9K. También queda suficiente espacio disponible para futuras mejoras, como aumentar el tamaño de los números, agregar más validaciones o mejorar la interfazz.
+
 
 
