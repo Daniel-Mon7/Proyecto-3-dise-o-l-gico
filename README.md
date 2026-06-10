@@ -877,7 +877,190 @@ graph TD
     MOD_DISPLAY --> EXT_AN
     MOD_DISPLAY --> EXT_SEG
 ```
-### 4 Ejemplo y análisis de una simulación funcional del sistema completo
+## 4 Diagramas de estado de todas las FSM diseñadas
+
+En el diseño se utilizan varias lógicas secuenciales para controlar el flujo de datos del sistema. Las FSM principales se encuentran en el módulo de debouncer del teclado, en el módulo de entrada de datos, en el divisor y en el selector de visualización. 
+---
+
+### 4.1 FSM del antirrebote del teclado
+
+El módulo `key_debouncer` se encarga de validar que una tecla presionada sea estable antes de generar la señal `valid`. Esto es necesario porque, como ya se ha venido trabajando desde el proyecto pasado, las teclas físicas pueden generar rebotes, haciendo que una sola presión se detecte como varias entradas.
+
+Esta FSM tiene tres estados principales:
+
+| Estado     | Función                                                          |
+| ---------- | ---------------------------------------------------------------- |
+| `IDLE`     | Espera a que se detecte una tecla presionada.                    |
+| `DEBOUNCE` | Verifica que la tecla se mantenga estable durante cierto tiempo. |
+| `PRESSED`  | Espera a que la tecla sea liberada antes de aceptar otra.        |
+
+El flujo general es:
+
+```text
+IDLE, DEBOUNCE, PRESSED, IDLE
+```
+
+En `IDLE`, el sistema espera hasta que `fila_pres` indique que hay una tecla presionada. Cuando esto ocurre, guarda el valor de `raw_key` en `stable_key` y pasa a `DEBOUNCE`.
+
+En `DEBOUNCE`, se revisa que la tecla siga presionada y que el valor no cambie. Si se mantiene estable durante el tiempo definido por `DEBOUNCE_TIME`, se genera un pulso en `valid` y se pasa a `PRESSED`.
+
+En `PRESSED`, el sistema espera a que la tecla se suelte. Cuando `fila_pres` vuelve a cero, la FSM regresa a `IDLE`.
+
+Básicamente esta FSM evita que una misma presión física sea interpretada como varias teclas.
+
+---
+
+### 4.2 FSM de entrada del dividendo y divisor
+
+El módulo `input_div` controla la captura de los datos necesarios para realizar la división. Su trabajo es recibir las teclas ya validadas, formar el dividendo, luego formar el divisor y finalmente generar la señal `start_calc`.
+
+Esta FSM utiliza dos estados principales:
+
+| Estado             | Función                           |
+| ------------------ | --------------------------------- |
+| `ESPERA_DIVIDENDO` | Recibe los dígitos del dividendo. |
+| `ESPERA_DIVISOR`   | Recibe los dígitos del divisor.   |
+
+El flujo general es:
+
+```text
+ESPERA_DIVIDENDO, ESPERA_DIVISOR, ESPERA_DIVIDENDO
+```
+
+En `ESPERA_DIVIDENDO`, el sistema recibe números del 0 al 9 y los guarda como parte del dividendo. Si se ingresa un solo dígito, se guarda directamente. Si se ingresan dos dígitos, se forma el número usando decenas y unidades.
+
+Cuando se presiona la tecla `A`, el sistema confirma el dividendo y pasa al estado `ESPERA_DIVISOR`.
+
+En `ESPERA_DIVISOR`, el sistema espera (obviamente) y recibe el divisor. De la misma forma, puede capturar uno o dos dígitos. Además, se limita el divisor a un valor máximo de 15, porque el divisor se representa con 4 bits.
+
+Cuando se presiona la tecla `B`, se confirma el divisor y se activa `start_calc` por un ciclo de reloj. Esta señal indica que el módulo divisor puede iniciar la operación. Después de esto, en esta lógica (sin pensar en el resto) espera a reset para estar en `ESPERA_DIVIDENDO` nuevamente.
+
+---
+
+### 4.3 FSM del divisor
+
+El módulo `divisor` contiene la FSM encargada de ejecutar la división entera. Esta máquina controla el proceso de desplazamiento, resta, decisión y actualización del cociente y residuo.
+
+Los estados principales son:
+
+| Estado      | Función                                                            |
+| ----------- | ------------------------------------------------------------------ |
+| `IDLE`      | Espera la señal `start` para iniciar la división.                  |
+| `INICIO`    | Desplaza el residuo parcial e ingresa el bit actual del dividendo. |
+| `RESTA`     | Calcula la resta entre el residuo parcial y el divisor.            |
+| `DECIDE`    | Decide si la resta se acepta o no.                                 |
+| `SIGUIENTE` | Pasa al siguiente bit del dividendo.                               |
+| `FIN`       | Guarda el cociente y residuo finales, y activa `done`.             |
+
+El flujo general es:
+
+```text
+IDLE a INICIO, luego a RESTA, DECIDE; llega a SIGUIENTE y se devuelve a DECIDE
+
+```
+
+Cuando ya se procesaron todos los bits, el flujo pasa a:
+
+```text
+SIGUIENTE a FIN y vuelve a IDLE
+```
+
+En `IDLE`, el divisor espera a que `start` se active. Cuando esto ocurre, limpia los registros internos, coloca el índice en el bit más significativo del dividendo y pasa a `INICIO`.
+
+En `INICIO`, el residuo parcial `R` se desplaza hacia la izquierda y se agrega el bit actual del dividendo.
+
+En `RESTA`, se calcula:
+
+```text
+R - divisor
+```
+
+En `DECIDE`, el sistema revisa si la resta fue negativa. Si la resta no se puede realizar, el bit correspondiente del cociente queda en `0`. Si la resta sí se puede realizar, el bit del cociente queda en `1` y el residuo parcial se actualiza.
+
+En `SIGUIENTE`, se revisa si ya se recorrieron todos los bits. Si todavía faltan bits, se reduce `bit_index` y se vuelve a `INICIO`. Si ya se terminó, se pasa a `FIN`.
+
+En `FIN`, se guardan el cociente y el residuo finales, se activa la señal `done` y luego la FSM regresa a `IDLE`.
+
+---
+
+### 4.4 FSM del selector de visualización
+
+El módulo `selector_div` controla qué dato se muestra en los displays de 7 segmentos. Antes de que la división termine, el sistema muestra el número que se está ingresando. Después de que `done` se activa, el sistema entra en modo de resultado y permite escoger qué valor mostrar.
+
+Los estados de visualización son:
+
+| Estado          | Función                             |
+| --------------- | ----------------------------------- |
+| `VER_COCIENTE`  | Muestra el cociente de la división. |
+| `VER_RESIDUO`   | Muestra el residuo.                 |
+| `VER_DIVIDENDO` | Muestra el dividendo ingresado.     |
+| `VER_DIVISOR`   | Muestra el divisor ingresado.       |
+
+El flujo depende de las teclas presionadas:
+
+```text
+A = VER_DIVIDENDO
+B = VER_DIVISOR
+C = VER_COCIENTE
+D = VER_RESIDUO
+```
+
+Cuando `done` se activa, el sistema coloca por defecto el estado `VER_COCIENTE`. Esto permite que al terminar la división se muestre primero el resultado principal.
+
+Después de eso, si el usuario presiona `A`, `B`, `C` o `D`, el sistema cambia el modo de visualización. Esta FSM no recalcula la división, solamente decide qué dato se manda hacia el módulo `display`.
+
+---
+
+### 4.5 Secuencia de escaneo del teclado
+
+El módulo `key_scanner` no se implementa como una FSM compleja, pero sí funciona como una secuencia cíclica. Su función es activar una fila del teclado a la vez mediante la señal `row[3:0]`.
+
+La secuencia de escaneo es:
+
+```text
+Fila 0, Fila 1, Fila 2, Fila 3, Fila 0 ...
+```
+
+La salida física cambia de la siguiente forma:
+
+| Fila activa | Salida `row` |
+| ----------- | ------------ |
+| Fila 0      | `0001`       |
+| Fila 1      | `0010`       |
+| Fila 2      | `0100`       |
+| Fila 3      | `1000`       |
+
+Mientras una fila está activa, el sistema revisa las columnas del teclado para detectar si hay una tecla presionada. Con la combinación de fila y columna se puede identificar el valor de la tecla.
+
+Esta secuencia solo avanza cuando se cumple el tiempo de escaneo y cuando `scan_enable` está activo.
+
+---
+
+### 4.6 Secuencia de multiplexado del display
+
+El módulo `anode_control` también funciona como una secuencia cíclica. Su trabajo es activar un display a la vez y seleccionar cuál dígito se debe mostrar.
+
+La secuencia del selector es:
+
+```text
+Dígito 0, Dígito 1, Dígito 2, Dígito 3, Dígito 0 ...
+```
+
+En cada pulso `tick`, el selector `sel` aumenta y se activa un ánodo diferente:
+
+| Selector `sel` | Salida `anode` |
+| -------------- | -------------- |
+| `0`            | `1000`         |
+| `1`            | `0001`         |
+| `2`            | `0010`         |
+| `3`            | `0100`         |
+
+Aunque físicamente solo se activa un display a la vez, el cambio ocurre tan rápido que visualmente parece que los cuatro displays están encendidos al mismo tiempo.
+
+Esta secuencia permite mostrar números de varios dígitos usando las mismas señales de segmentos `seg[6:0]`.
+
+
+### 5 Ejemplo y análisis de una simulación funcional del sistema completo
 
 Para esta prueba se utilizó como ejemplo la división:
 
@@ -896,7 +1079,7 @@ La simulación permite revisar que cada bloque del sistema trabaje en el orden c
 
 ---
 
-#### 4.1 Flujo general del sistema
+#### 5.1 Flujo general del sistema
 
 El sistema completo se conecta desde el módulo `top`, donde se unen los tres bloques principales: el teclado, el bloque de división y el display de 7 segmentos.
 
@@ -905,7 +1088,7 @@ Después, el módulo `div_top` recibe esos datos, realiza la división y genera 
 
 ---
 
-#### 4.2 Estímulo en la simulación
+#### 5.2 Estímulo en la simulación
 
 Para ingresar la operación `25 / 4`, se simularon las siguientes teclas:
 
@@ -924,7 +1107,7 @@ Durante esta parte de la simulación, el sistema primero debe formar el número 
 
 ---
 
-#### 4.3 Lectura y validación de las teclas
+#### 5.3 Lectura y validación de las teclas
 
 La lectura del teclado no se usa directamente, ya que una tecla puede generar rebotes o valores inestables al ser presionada. Por eso, el módulo `key_debouncer` espera a que la tecla se mantenga estable durante cierto tiempo antes de generar el pulso `valid`.
 
@@ -949,7 +1132,7 @@ end
 
 ---
 
-#### 4.4 Registro del dividendo y divisor
+#### 5.4 Registro del dividendo y divisor
 
 El módulo encargado de recibir los números es `input_div`. Este módulo tiene dos estados principales: uno para esperar el dividendo y otro para esperar el divisor.
 
@@ -1018,7 +1201,7 @@ Cuando se presiona `B`, `start_calc` se activa por un ciclo. Esta señal es la q
 
 ---
 
-#### 4.5 Cálculo de la división
+#### 5.5 Cálculo de la división
 
 El módulo `divisor` realiza la división de forma secuencial. Esto quiere decir que no entrega el resultado inmediatamente, sino que va trabajando por varios ciclos de reloj.
 
@@ -1101,7 +1284,7 @@ Esto confirma que la operación fue correcta, ya que:
 
 ---
 
-#### 4.6 Selección del dato que se muestra
+#### 5.6 Selección del dato que se muestra
 
 Cuando el divisor termina, la señal `done` activa el modo de resultado. Por defecto, el sistema muestra el cociente.
 
@@ -1200,7 +1383,7 @@ Finalmente, el valor del dígito activo se convierte al patrón correspondiente 
 
 ---
 
-#### 4.7 Resultado final de la simulación
+#### 5.7 Resultado final de la simulación
 
 Para la operación:
 
@@ -1216,9 +1399,9 @@ Residuo  = 1
 ```
 Además, se verificó que el valor mostrado en los displays cambia correctamente dependiendo de la tecla de selección presionada. Por lo tanto, esta simulación confirma que el sistema completo funciona de manera ordenada, desde el estímulo de entrada hasta el manejo final de los 7 segmentos.
 
-## 5 Análisis de consumo de recursos en la FPGA y consumo de potencia
+## 6 Análisis de consumo de recursos en la FPGA y consumo de potencia
 
-### 5.1 Descripción general
+### 6.1 Descripción general
 
 Para analizar el consumo de recursos del diseño se utilizaron los reportes generados durante el flujo de síntesis e implementación para la Tang .Los archivos revisados fueron principalmente:
 
@@ -1231,7 +1414,7 @@ El reporte de síntesis muestra las celdas lógicas generadas a partir del códi
 
 ---
 
-### 5.2 Recursos reportados en síntesis
+### 6.2 Recursos reportados en síntesis
 
 En la síntesis se obtuvo un total de:
 
@@ -1273,7 +1456,7 @@ El uso de LUTs es esperado porque el diseño tiene bastante lógica combinaciona
 
 ---
 
-### 5.3 Recursos después de place and route
+### 6.3 Recursos después de place and route
 
 Después de la implementación física, el reporte indicó la siguiente utilización de la FPGA:
 
@@ -1293,7 +1476,7 @@ El uso de `IOB` fue de 21 pines, equivalente al 7%. Estos pines corresponden pri
 
 ---
 
-### 5.4 Consumo de potencia
+### 6.4 Consumo de potencia
 
 En el flujo utilizado no se generó un archivo específico de potencia, como `power.rpt`. Por esta razón, no se cuenta con un valor numérico exacto de potencia estática, dinámica o total.
 
@@ -1315,16 +1498,16 @@ Por eso, el consumo constante viene principalmente del refrescamiento del displa
 
 ---
 
-### 5.5 Conclusión
+### 6.5 Conclusión
 
 El diseño utiliza una cantidad moderada de recursos de la FPGA. El uso de `SLICE` fue de 14% y el uso de `IOB` fue de 7%. Además, se utilizaron 178 flip-flops y 933 LUT básicas.
 
 Con estos resultados se puede concluir que el sistema completo cabe sin problema dentro de la Tang Nano 9K. También queda suficiente espacio disponible para futuras mejoras, como aumentar el tamaño de los números, agregar más validaciones o mejorar la interfazz.
 
 
-## 6 Reporte de velocidades máximas de reloj posibles en el diseño
+## 7 Reporte de velocidades máximas de reloj posibles en el diseño
 
-### 6.1 Descripción general
+### 7.1 Descripción general
 
 Para verificar la velocidad máxima de reloj del diseño se revisó otra vez el reporte generado durante el proceso de `pnr`, específicamente el archivo:
 
@@ -1336,7 +1519,7 @@ Este reporte indica la frecuencia máxima estimada para el reloj principal del s
 
 ---
 
-### 6.2 Frecuencia objetivo del diseño y Frecuencia máxima reportada
+### 7.2 Frecuencia objetivo del diseño y Frecuencia máxima reportada
 
 El proyecto establece que el sistema debe trabajar como mínimo con el reloj de la Tang Nano 9K, el cual es de:
 
@@ -1350,7 +1533,7 @@ Max frequency for clock 'display_inst.clk': 95.26 MHz (PASS at 27.00 MHz)
 ```
 ---
 
-### 6.4 Análisis del resultado
+### 7.3 Análisis del resultado
 
 La frecuencia máxima obtenida fue de `95.26 MHz`, mientras que la frecuencia mínima requerida era de `27 MHz`.
 
@@ -1366,9 +1549,10 @@ Además, el reporte muestra la palabra `PASS`, lo cual confirma que la herramien
 
 ---
 
-### 6.5 Conclusión
+### 7.4 Conclusión
 
 El diseño cumple correctamente con la frecuencia mínima solicitada. La frecuencia máxima reportada fue de aproximadamente `95.26 MHz`, por lo que existe un margen suficiente sobre los `27 MHz` requeridos.
 
 Esto significa que el sistema puede funcionar con el reloj principal de la Tang sin presentar problemas de temporización según el reporte de implementación.
+
 
