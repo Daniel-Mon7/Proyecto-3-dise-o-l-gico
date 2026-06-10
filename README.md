@@ -1555,4 +1555,11 @@ El diseño cumple correctamente con la frecuencia mínima solicitada. La frecuen
 
 Esto significa que el sistema puede funcionar con el reloj principal de la Tang sin presentar problemas de temporización según el reporte de implementación.
 
+## 8 Análisis de principales problemas hallados durante el trabajo y de las soluciones aplicadas
+
+Uno de los problemas principales fue lograr que el display mostrara los valores correctos. En varias pruebas, el cálculo interno sí se realizaba, pero el número mostrado no coincidía con el resultado esperado. Esto se debía a que los valores debían enviarse al display en el formato correcto, separando decenas y unidades cuando fuera necesario. Para solucionarlo, se revisó la señal `num_out`, el selector de visualización y la forma en que el módulo `display` seleccionaba cada nibble.
+
+También se presentaron problemas con el multiplexado de los 7 segmentos. Si el ánodo activo no coincidía con el dígito seleccionado, el número podía verse desplazado o incorrecto. La solución fue revisar la secuencia del módulo `anode_control` y verificar que cada valor de `sel` correspondiera al dígito correcto.
+
+Otro bug importante ocurrió cuando el residuo debía ser cero. En todos los casos que este debía ser cero el sistema mostraba valores erróneos en lugar de `0`. Para corregirlo, se revisó que el residuo se actualizara correctamente al finalizar la división y que el selector no mostrara un valor anterior guardado. Finalmente, se revisó el flujo completo de datos desde la tecla presionada hasta el valor mostrado en el display. Esto permitió corregir errores de sincronización entre `valid`, `start_calc`, `done` y la selección del dato mostrado. Con estas correcciones, el sistema logró mostrar correctamente el dividendo, divisor, cociente y residuo.
 
