@@ -35,7 +35,7 @@ module input_div (
     end
     assign valid_pulse = valid & ~valid_prev; // Crea un pulso de un ciclo de reloj
     
-    // --- Máquina de Estados Principal ---
+    //Máquina de Estados Principal
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             state             <= ESPERA_DIVIDENDO;
@@ -109,11 +109,11 @@ module input_div (
 
                         // --- INTERCEPCIÓN DE CERO ---
                         if (divisor_actual == 4'd0) begin
-                            // Si es cero, reiniciamos el divisor o puedes optar por no encender 'start_calc'
+                            // Si es cero, reiniciamos el divisor 
                             divisor           <= 4'd0;
                             tengo_decenas_div <= 0;
                             start_calc        <= 0; // Bloquea el inicio del cálculo
-                            // Opcional: mantén el estado en ESPERA_DIVISOR para obligar a meter un divisor válido
+
                             state             <= ESPERA_DIVISOR; 
                         end else begin
                             divisor           <= divisor_actual;

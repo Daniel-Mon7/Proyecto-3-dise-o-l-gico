@@ -32,9 +32,6 @@ module selector_div (
     logic resultado_activo;   // Flag de resultados listos
     logic [3:0] key_guardada; 
 
-    // Constante para representar el guion en tus displays. 
-    // Usualmente en decodificadores BCD personalizados, el valor 4'hE o 4'hF se usa para apagar 
-    // todo salvo el segmento G. Si tu decodificador usa otro dígito para el guion, cámbialo aquí:
     localparam [3:0] CODIGO_GUION = 4'hE; 
 
     // --- Registro de comando de teclado ---
