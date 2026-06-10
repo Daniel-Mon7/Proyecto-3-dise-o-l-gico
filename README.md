@@ -879,7 +879,6 @@ graph TD
 ```
 ## 4 Diagramas de estado de todas las FSM diseñadas
 
-En el diseño se utilizan varias lógicas secuenciales para controlar el flujo de datos del sistema. Las FSM principales se encuentran en el módulo de debouncer del teclado, en el módulo de entrada de datos, en el divisor y en el selector de visualización. 
 ---
 
 ### 4.1 FSM del antirrebote del teclado
